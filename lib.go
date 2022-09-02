@@ -11,7 +11,7 @@ import (
 type AttestationDocument struct {
 	ModuleId string
 	TimeStamp uint64
-	Digest strings
+	Digest string
 	PCRs map[int32][]byte
 	Certificate []byte
 	CABundle [][]byte
