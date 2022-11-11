@@ -9,6 +9,7 @@
 //! See the `LICENSE_MIT.markdown` file in the Veracruz root directory for
 //! information on licensing and copyright.
 
+// insert a trivial change here
 package nitro_eclave_attestation_document
 
 import (
