@@ -1,3 +1,14 @@
+//! tests for the AWS Nitro Attestation Document module
+//!
+//! ## Authors
+//!
+//! The Veracruz Development Team.
+//!
+//! ## Licensing and copyright notice
+//!
+//! See the `LICENSE_MIT.markdown` file in the Veracruz root directory for
+//! information on licensing and copyright.
+
 package nitro_eclave_attestation_document
 
 import (
