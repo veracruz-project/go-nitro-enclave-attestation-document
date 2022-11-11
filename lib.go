@@ -10,7 +10,6 @@
 //! information on licensing and copyright.
 
 // insert a trivial change here
-// insert another change
 package nitro_eclave_attestation_document
 
 import (
