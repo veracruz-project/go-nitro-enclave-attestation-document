@@ -2,8 +2,10 @@ name: Go AWS nitro enclave attestation document authentication module
 
 on:
   pull_request:
-    branches: [ $default-branch ]
+    branches: [ main ]
   workflow_dispatch:
+  push:
+    branches: [ main ]
 jobs:
   build:
 
