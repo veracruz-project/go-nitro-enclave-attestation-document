@@ -14,21 +14,21 @@ package nitro_eclave_attestation_document
 import (
 	"crypto/x509"
 	"fmt"
-	"time"
 	"github.com/fxamacker/cbor/v2"
 	"github.com/veraison/go-cose"
+	"time"
 )
 
 type AttestationDocument struct {
-	ModuleId string
-	TimeStamp uint64
-	Digest string
-	PCRs map[int32][]byte
+	ModuleId    string
+	TimeStamp   uint64
+	Digest      string
+	PCRs        map[int32][]byte
 	Certificate []byte
-	CABundle [][]byte
-	PublicKey []byte
-	User_Data []byte
-	Nonce []byte
+	CABundle    [][]byte
+	PublicKey   []byte
+	User_Data   []byte
+	Nonce       []byte
 }
 
 /// Authenticate an AWS Nitro Enclave attestation document with the provided root certificate.
@@ -41,7 +41,7 @@ func AuthenticateDocument(data []byte, root_certificate x509.Certificate) (*Atte
 /// Same as AuthenticateDocument, but allows the caller to set an alternate "current time" to allow
 /// tests to use saved attestation document data without triggering certificate expiry errors.
 /// THIS FUNCTION SHOULD ONLY BE USED IN TESTING
-func AuthenticateDocumentTest(data[]byte, root_certificate x509.Certificate, test_time time.Time) (*AttestationDocument, error) {
+func AuthenticateDocumentTest(data []byte, root_certificate x509.Certificate, test_time time.Time) (*AttestationDocument, error) {
 	return authenticateDocumentImpl(data, root_certificate, test_time)
 }
 
@@ -78,12 +78,12 @@ func authenticateDocumentImpl(data []byte, root_certificate x509.Certificate, cu
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument:ParseCertificate failed:%v", err)
 	}
-	cert_verify_options := x509.VerifyOptions {
-		Intermediates: intermediates_pool,
-		Roots: root_pool,
-		KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
+	cert_verify_options := x509.VerifyOptions{
+		Intermediates:             intermediates_pool,
+		Roots:                     root_pool,
+		KeyUsages:                 []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 		MaxConstraintComparisions: 0, // sic: This typo is correct per the documentation, it will not be fixed
-		                              // per this issue: https://github.com/golang/go/issues/27969
+		// per this issue: https://github.com/golang/go/issues/27969
 		CurrentTime: current_time,
 	}
 	_, err = end_user_cert.Verify(cert_verify_options)
@@ -94,7 +94,7 @@ func authenticateDocumentImpl(data []byte, root_certificate x509.Certificate, cu
 	verifier, _ := cose.NewVerifier(cose.AlgorithmES384, end_user_cert.PublicKey)
 
 	err = msg.Verify(nil, verifier)
-	if err !=nil {
+	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument::Verify failed:%v", err)
 	}
 
