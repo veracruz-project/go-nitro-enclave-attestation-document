@@ -17,37 +17,18 @@ import (
 	"crypto/rand"
 	"crypto/x509"
 	"crypto/x509/pkix"
-	"encoding/pem"
 	"fmt"
 	"math/big"
-	"os"
 	"testing"
 	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 	"github.com/veraison/go-cose"
 )
 
-var testTime time.Time = time.Date(2022, 11, 9, 23, 0, 0, 0, time.UTC)
-var rootCert x509.Certificate
-
 func init() {
-	certPemBytes, err := os.ReadFile("test/aws_nitro_root_cert.pem")
-	if err != nil {
-		panic("Read of AWS Nitro root certificate file failed")
-	}
-	cert_block, _ := pem.Decode(certPemBytes)
-	if cert_block == nil {
-		panic("Could not decode PEM into DER")
-	}
 
-	cert, err := x509.ParseCertificate(cert_block.Bytes)
-	if err != nil {
-		panic("Could not parse DER into certificate")
-	}
-	rootCert = *cert
 }
 
 func generateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, signingCertDer []byte, caBundle []byte, signingKey *ecdsa.PrivateKey) ([]byte, error) {
@@ -83,18 +64,33 @@ func generateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, sign
 	return messageCbor, nil
 }
 
-func generateCertsAndKeys() (*ecdsa.PrivateKey, []byte, *x509.Certificate, []byte, error) {
+func generateValidTimeRange(expired bool) (time.Time, time.Time) {
+	var notBefore time.Time
+	var notAfter time.Time
+	if expired {
+		notBefore = time.Now().Add(-time.Hour * 24)
+		notAfter = time.Now().Add(-time.Hour * 1)
+	} else {
+		notBefore = time.Now()
+		notAfter = time.Now().Add(time.Hour * 24 * 180)
+	}
+	return notBefore, notAfter
+}
+
+func generateCertsAndKeys(endCertExpired bool, caCertExpired bool) (*ecdsa.PrivateKey, []byte, *x509.Certificate, []byte, error) {
 	caKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("failed to generate CA key:%v", err)
 	}
+
+	caNotBefore, caNotAfter := generateValidTimeRange(caCertExpired)
 	caTemplate := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
 			Organization: []string{"Acme Co"},
 		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(time.Hour * 24 * 180),
+		NotBefore: caNotBefore,
+		NotAfter:  caNotAfter,
 
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -115,13 +111,15 @@ func generateCertsAndKeys() (*ecdsa.PrivateKey, []byte, *x509.Certificate, []byt
 	if err != nil {
 		return nil, nil, nil, nil, fmt.Errorf("Failed to generate end key:%v", err)
 	}
+
+	endNotBefore, endNotAfter := generateValidTimeRange(endCertExpired)
 	endTemplate := x509.Certificate{
 		SerialNumber: big.NewInt(1),
 		Subject: pkix.Name{
 			Organization: []string{"Acme Co"},
 		},
-		NotBefore: time.Now(),
-		NotAfter:  time.Now().Add(time.Hour * 24 * 180),
+		NotBefore: endNotBefore,
+		NotAfter:  endNotAfter,
 
 		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth, x509.ExtKeyUsageServerAuth},
 		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign,
@@ -150,7 +148,7 @@ func generatePCRs() (map[int32][]byte, error) {
 }
 
 func Test_AuthenticateDocument_ok(t *testing.T) {
-	endKey, endCertDer, caCert, caCertDer, err := generateCertsAndKeys()
+	endKey, endCertDer, caCert, caCertDer, err := generateCertsAndKeys(false, false)
 	if err != nil {
 		t.Fatalf("generateCertsAndKeys failed:%v\n", err)
 	}
@@ -178,7 +176,7 @@ func Test_AuthenticateDocument_ok(t *testing.T) {
 }
 
 func Test_AuthenticateDocument_bad_signature(t *testing.T) {
-	endKey, endCertDer, caCert, caCertDer, err := generateCertsAndKeys()
+	endKey, endCertDer, caCert, caCertDer, err := generateCertsAndKeys(false, false)
 	if err != nil {
 		t.Fatalf("generateCertsAndKeys failed:%v\n", err)
 	}
@@ -198,10 +196,36 @@ func Test_AuthenticateDocument_bad_signature(t *testing.T) {
 	assert.EqualError(t, err, `AuthenticateDocument::Verify failed:verification error`)
 }
 
-func Test_AuthenticateDocument_expired(t *testing.T) {
-	tokenBytes, err := os.ReadFile("test/aws_nitro_document_bad_sig.cbor")
-	require.NoError(t, err)
+func Test_AuthenticateDocument_end_entity_cert_expired(t *testing.T) {
+	endKey, endCertDer, caCert, caCertDer, err := generateCertsAndKeys(true, false)
+	if err != nil {
+		t.Fatalf("generateCertsAndKeys failed:%v\n", err)
+	}
+	PCRs, err := generatePCRs()
+	if err != nil {
+		t.Fatalf("generatePCRs failed:%v\n", err)
+	}
+	userData := generateRandomSlice(32)
+	nonce := generateRandomSlice(32)
+	messageCbor, err := generateDocument(PCRs, userData, nonce, endCertDer, caCertDer, endKey)
 
-	_, err = AuthenticateDocument(tokenBytes, rootCert)
+	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
+	assert.ErrorContains(t, err, `AuthenticateDocument: Failed to verify certificate chain:x509: certificate has expired or is not yet valid: current time`)
+}
+
+func Test_AuthenticateDocument_ca_cert_expired(t *testing.T) {
+	endKey, endCertDer, caCert, caCertDer, err := generateCertsAndKeys(false, true)
+	if err != nil {
+		t.Fatalf("generateCertsAndKeys failed:%v\n", err)
+	}
+	PCRs, err := generatePCRs()
+	if err != nil {
+		t.Fatalf("generatePCRs failed:%v\n", err)
+	}
+	userData := generateRandomSlice(32)
+	nonce := generateRandomSlice(32)
+	messageCbor, err := generateDocument(PCRs, userData, nonce, endCertDer, caCertDer, endKey)
+
+	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
 	assert.ErrorContains(t, err, `AuthenticateDocument: Failed to verify certificate chain:x509: certificate has expired or is not yet valid: current time`)
 }
