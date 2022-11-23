@@ -14,9 +14,9 @@ package nitro_eclave_attestation_document
 import (
 	"crypto/x509"
 	"fmt"
+
 	"github.com/fxamacker/cbor/v2"
 	"github.com/veraison/go-cose"
-	"time"
 )
 
 type AttestationDocument struct {
@@ -27,7 +27,7 @@ type AttestationDocument struct {
 	Certificate []byte
 	CABundle    [][]byte
 	PublicKey   []byte
-	User_Data   []byte
+	UserData    []byte
 	Nonce       []byte
 }
 
@@ -35,17 +35,6 @@ type AttestationDocument struct {
 /// If authentication passes, return the generated AttestationDocument representing the fields
 /// from the provided CBOR data
 func AuthenticateDocument(data []byte, root_certificate x509.Certificate) (*AttestationDocument, error) {
-	return authenticateDocumentImpl(data, root_certificate, time.Now())
-}
-
-/// Same as AuthenticateDocument, but allows the caller to set an alternate "current time" to allow
-/// tests to use saved attestation document data without triggering certificate expiry errors.
-/// THIS FUNCTION SHOULD ONLY BE USED IN TESTING
-func AuthenticateDocumentTest(data []byte, root_certificate x509.Certificate, test_time time.Time) (*AttestationDocument, error) {
-	return authenticateDocumentImpl(data, root_certificate, test_time)
-}
-
-func authenticateDocumentImpl(data []byte, root_certificate x509.Certificate, current_time time.Time) (*AttestationDocument, error) {
 	// Following the steps here: https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
 	// Step 1. Decode the CBOR object and map it to a COSE_Sign1 structure
 	var msg cose.Sign1Message
@@ -56,13 +45,13 @@ func authenticateDocumentImpl(data []byte, root_certificate x509.Certificate, cu
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument::UnmarshalCBOR failed:%v", err)
 	}
+
 	// Step 2. Extract the attestation document from the COSE_Sign1 structure
 	document, err := parsePayload(msg.Payload)
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument:parsePayload failed:%v", err)
 	}
 	// Step 3. Verify the certificate's chain
-	//var certificates []x509.Certificate
 	intermediates_pool := x509.NewCertPool()
 	for _, this_cert_der := range document.CABundle {
 		this_cert, err := x509.ParseCertificate(this_cert_der)
@@ -84,15 +73,16 @@ func authenticateDocumentImpl(data []byte, root_certificate x509.Certificate, cu
 		KeyUsages:                 []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 		MaxConstraintComparisions: 0, // sic: This typo is correct per the documentation, it will not be fixed
 		// per this issue: https://github.com/golang/go/issues/27969
-		CurrentTime: current_time,
 	}
 	_, err = end_user_cert.Verify(cert_verify_options)
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument: Failed to verify certificate chain:%v", err)
 	}
 	// Step 4. Ensure the attestation document is properly signed
-	verifier, _ := cose.NewVerifier(cose.AlgorithmES384, end_user_cert.PublicKey)
-
+	verifier, err := cose.NewVerifier(cose.AlgorithmES384, end_user_cert.PublicKey)
+	if err != nil {
+		return nil, fmt.Errorf("NewVerifier failed:%v\n", err)
+	}
 	err = msg.Verify(nil, verifier)
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument::Verify failed:%v", err)
