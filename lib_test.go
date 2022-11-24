@@ -19,6 +19,9 @@ import (
 	"crypto/x509/pkix"
 	"fmt"
 	"math/big"
+	pseudoRand "math/rand"
+	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -28,7 +31,21 @@ import (
 )
 
 func init() {
+	envSeedValue := os.Getenv("GO_DOC_SEED")
 
+	var seed int64
+	var err error
+	if envSeedValue != "" {
+		seed, err = strconv.ParseInt(envSeedValue, 10, 64)
+		if err != nil {
+			panic("Error: Invalid input for seed\n")
+		}
+
+	} else {
+		seed = time.Now().UnixNano()
+	}
+	fmt.Printf("To repeat this test, set an environment variable GO_DOC_SEED to %v\n", seed)
+	pseudoRand.Seed(seed)
 }
 
 func generateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, signingCertDer []byte, caBundle []byte, signingKey *ecdsa.PrivateKey) ([]byte, error) {
@@ -136,7 +153,7 @@ const NUM_PCRS = 16
 
 func generateRandomSlice(size int32) []byte {
 	result := make([]byte, size)
-	rand.Read(result)
+	pseudoRand.Read(result)
 	return result
 }
 func generatePCRs() (map[int32][]byte, error) {
