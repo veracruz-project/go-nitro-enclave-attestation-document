@@ -12,8 +12,11 @@
 package nitro_eclave_attestation_document
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/x509"
 	"fmt"
+	"time"
 
 	"github.com/fxamacker/cbor/v2"
 	"github.com/veraison/go-cose"
@@ -90,6 +93,40 @@ func AuthenticateDocument(data []byte, root_certificate x509.Certificate) (*Atte
 
 	// All is good, return the document
 	return document, nil
+}
+
+/// Generate CBOR for a fake AWS Nitro Enclave attestation document, signed by the provided key, with the `signingCertDer` embedded in the `Certificate` field and the
+/// `caBundle` embedded as the `CABundle` field.
+/// This interface is useful for testing. Beyond that, there should be no reason for you to generate your own attestation document
+func GenerateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, signingCertDer []byte, caBundle [][]byte, signingKey *ecdsa.PrivateKey) ([]byte, error) {
+	document := AttestationDocument{
+		ModuleId:    "MyId",
+		TimeStamp:   uint64(time.Now().UnixMilli()),
+		Digest:      "SHA384",
+		PCRs:        PCRs,
+		Certificate: signingCertDer,
+		CABundle:    caBundle,
+		PublicKey:   []byte{},
+		UserData:    userData,
+		Nonce:       nonce,
+	}
+	payload, err := cbor.Marshal(document)
+	if err != nil {
+		return nil, fmt.Errorf("cbor Marshal of document failed:%v", err)
+	}
+
+	msg := cose.NewSign1Message()
+	msg.Payload = payload
+	signer, err := cose.NewSigner(cose.AlgorithmES384, signingKey)
+	if err := msg.Sign(rand.Reader, []byte{}, signer); err != nil {
+		return nil, fmt.Errorf("Failed to sign:%v\n", err)
+	}
+
+	messageCbor, err := msg.MarshalCBOR()
+	if err != nil {
+		return nil, fmt.Errorf("Failed to marshal CBOR:%v\n", err)
+	}
+	return messageCbor, nil
 }
 
 func parsePayload(payload []byte) (*AttestationDocument, error) {

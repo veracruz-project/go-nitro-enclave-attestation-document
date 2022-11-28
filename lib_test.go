@@ -25,9 +25,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/fxamacker/cbor/v2"
 	"github.com/stretchr/testify/assert"
-	"github.com/veraison/go-cose"
 )
 
 func init() {
@@ -46,39 +44,6 @@ func init() {
 	}
 	fmt.Printf("To repeat this test, set an environment variable GO_DOC_SEED to %v\n", seed)
 	pseudoRand.Seed(seed)
-}
-
-func generateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, signingCertDer []byte, caBundle []byte, signingKey *ecdsa.PrivateKey) ([]byte, error) {
-	document := AttestationDocument{
-		ModuleId:    "MyId",
-		TimeStamp:   uint64(time.Now().UnixMilli()),
-		Digest:      "SHA384",
-		PCRs:        PCRs,
-		Certificate: signingCertDer,
-		CABundle: [][]byte{
-			caBundle,
-		},
-		PublicKey: []byte{},
-		UserData:  userData,
-		Nonce:     nonce,
-	}
-	payload, err := cbor.Marshal(document)
-	if err != nil {
-		return nil, fmt.Errorf("cbor Marshal of document failed:%v", err)
-	}
-
-	msg := cose.NewSign1Message()
-	msg.Payload = payload
-	signer, err := cose.NewSigner(cose.AlgorithmES384, signingKey)
-	if err := msg.Sign(rand.Reader, []byte{}, signer); err != nil {
-		return nil, fmt.Errorf("Failed to sign:%v\n", err)
-	}
-
-	messageCbor, err := msg.MarshalCBOR()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to marshal CBOR:%v\n", err)
-	}
-	return messageCbor, nil
 }
 
 func generateValidTimeRange(expired bool) (time.Time, time.Time) {
@@ -175,7 +140,7 @@ func Test_AuthenticateDocument_ok(t *testing.T) {
 	}
 	userData := generateRandomSlice(32)
 	nonce := generateRandomSlice(32)
-	messageCbor, err := generateDocument(PCRs, userData, nonce, endCertDer, caCertDer, endKey)
+	messageCbor, err := GenerateDocument(PCRs, userData, nonce, endCertDer, [][]byte{caCertDer}, endKey)
 	if err != nil {
 		t.Fatalf("generateDocument failed:%v\n", err)
 	}
@@ -203,9 +168,9 @@ func Test_AuthenticateDocument_bad_signature(t *testing.T) {
 	}
 	userData := generateRandomSlice(32)
 	nonce := generateRandomSlice(32)
-	messageCbor, err := generateDocument(PCRs, userData, nonce, endCertDer, caCertDer, endKey)
+	messageCbor, err := GenerateDocument(PCRs, userData, nonce, endCertDer, [][]byte{caCertDer}, endKey)
 	if err != nil {
-		t.Fatalf("generateDocument failed:%v\n", err)
+		t.Fatalf("GenerateDocument failed:%v\n", err)
 	}
 	// modify the signature so it's not valid
 	messageCbor[len(messageCbor)-1] ^= messageCbor[len(messageCbor)-1]
@@ -224,7 +189,7 @@ func Test_AuthenticateDocument_end_entity_cert_expired(t *testing.T) {
 	}
 	userData := generateRandomSlice(32)
 	nonce := generateRandomSlice(32)
-	messageCbor, err := generateDocument(PCRs, userData, nonce, endCertDer, caCertDer, endKey)
+	messageCbor, err := GenerateDocument(PCRs, userData, nonce, endCertDer, [][]byte{caCertDer}, endKey)
 
 	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
 	assert.ErrorContains(t, err, `AuthenticateDocument: Failed to verify certificate chain:x509: certificate has expired or is not yet valid: current time`)
@@ -241,7 +206,7 @@ func Test_AuthenticateDocument_ca_cert_expired(t *testing.T) {
 	}
 	userData := generateRandomSlice(32)
 	nonce := generateRandomSlice(32)
-	messageCbor, err := generateDocument(PCRs, userData, nonce, endCertDer, caCertDer, endKey)
+	messageCbor, err := GenerateDocument(PCRs, userData, nonce, endCertDer, [][]byte{caCertDer}, endKey)
 
 	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
 	assert.ErrorContains(t, err, `AuthenticateDocument: Failed to verify certificate chain:x509: certificate has expired or is not yet valid: current time`)
