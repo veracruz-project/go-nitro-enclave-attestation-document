@@ -37,13 +37,20 @@ type AttestationDocument struct {
 /// Authenticate an AWS Nitro Enclave attestation document with the provided root certificate.
 /// If authentication passes, return the generated AttestationDocument representing the fields
 /// from the provided CBOR data
-func AuthenticateDocument(data []byte, root_certificate x509.Certificate) (*AttestationDocument, error) {
+/// data - the document data to be authenticated
+/// root_certificate - the root certificate to be used to authenticate the document
+/// add_prefix - The AWS implementation of COSE (and the Rust implementation) excludes a prefix
+///  to the document that the golang implementation expects. Setting this parameter to true will
+///  assume the prefix is not there and adds it. Otherwise, the `data` input is left as-is.
+func AuthenticateDocument(data []byte, root_certificate x509.Certificate, add_prefix bool) (*AttestationDocument, error) {
 	// Following the steps here: https://docs.aws.amazon.com/enclaves/latest/user/verify-root.html
 	// Step 1. Decode the CBOR object and map it to a COSE_Sign1 structure
 	var msg cose.Sign1Message
-	// The go-cose library wants a special prefix on the data that I'm not seeing (and that the rust implementation
+	// The go-cose library wants a special prefix on the data that I'm not seeing from AWS (and that the rust implementation
 	// of cose is not expecting. Adding it to make it happy)
-	data = append([]byte{0xd2}, data...)
+	if add_prefix {
+		data = append([]byte{0xd2}, data...)
+	}
 	err := msg.UnmarshalCBOR(data)
 	if err != nil {
 		return nil, fmt.Errorf("AuthenticateDocument::UnmarshalCBOR failed:%v", err)

@@ -146,7 +146,7 @@ func Test_AuthenticateDocument_ok(t *testing.T) {
 	}
 
 	// We now have a ?valid? COSE. Try to authenticate it
-	document, err := AuthenticateDocument(messageCbor[1:], *caCert)
+	document, err := AuthenticateDocument(messageCbor, *caCert, false)
 	if err != nil {
 		t.Errorf("Failed to authenticate document:%v\n", err)
 	}
@@ -174,7 +174,7 @@ func Test_AuthenticateDocument_bad_signature(t *testing.T) {
 	}
 	// modify the signature so it's not valid
 	messageCbor[len(messageCbor)-1] ^= messageCbor[len(messageCbor)-1]
-	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
+	_, err = AuthenticateDocument(messageCbor[1:], *caCert, true)
 	assert.EqualError(t, err, `AuthenticateDocument::Verify failed:verification error`)
 }
 
@@ -191,7 +191,7 @@ func Test_AuthenticateDocument_end_entity_cert_expired(t *testing.T) {
 	nonce := generateRandomSlice(32)
 	messageCbor, err := GenerateDocument(PCRs, userData, nonce, endCertDer, [][]byte{caCertDer}, endKey)
 
-	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
+	_, err = AuthenticateDocument(messageCbor[1:], *caCert, true)
 	assert.ErrorContains(t, err, `AuthenticateDocument: Failed to verify certificate chain:x509: certificate has expired or is not yet valid: current time`)
 }
 
@@ -208,6 +208,6 @@ func Test_AuthenticateDocument_ca_cert_expired(t *testing.T) {
 	nonce := generateRandomSlice(32)
 	messageCbor, err := GenerateDocument(PCRs, userData, nonce, endCertDer, [][]byte{caCertDer}, endKey)
 
-	_, err = AuthenticateDocument(messageCbor[1:], *caCert)
+	_, err = AuthenticateDocument(messageCbor[1:], *caCert, true)
 	assert.ErrorContains(t, err, `AuthenticateDocument: Failed to verify certificate chain:x509: certificate has expired or is not yet valid: current time`)
 }
