@@ -30,7 +30,7 @@ type AttestationDocument struct {
 	Certificate []byte
 	CABundle    [][]byte
 	PublicKey   []byte
-	UserData    []byte
+	User_Data    []byte // This non-standard format for this variable is required. Don't change it
 	Nonce       []byte
 }
 
@@ -114,7 +114,7 @@ func GenerateDocument(PCRs map[int32][]byte, userData []byte, nonce []byte, sign
 		Certificate: signingCertDer,
 		CABundle:    caBundle,
 		PublicKey:   []byte{},
-		UserData:    userData,
+		User_Data:    userData,
 		Nonce:       nonce,
 	}
 	payload, err := cbor.Marshal(document)
